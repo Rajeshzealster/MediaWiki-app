@@ -1,0 +1,168 @@
+tosca_definitions_version: tosca_simple_yaml_1_3
+
+metadata:
+  template_name: "media-wiki-app"
+  template_author: "Cloud&Smart lab"
+  template_version: "1.0"
+
+
+
+node_types:
+
+  apache-server:
+    derived_from: tosca.nodes.SoftwareComponent
+
+    requirements:
+      # - leader:
+      #     capability: tosca.capabilities.Compute
+      #     relationship: DB-credentialsTransfer
+
+      - host:
+          capability: tosca.capabilities.Compute
+          relationship: tosca.relationships.HostedOn
+
+    interfaces:
+      Standard:
+        operations:
+          create: apache-server-create.yaml
+          delete: apache-server-delete.yaml
+
+  
+
+  maria-db:
+    derived_from: tosca.nodes.SoftwareComponent
+
+    requirements:
+      # - leader:
+      #     capability: tosca.capabilities.Compute
+      #     relationship: DB-credentialsTransfer
+
+      - host:
+          capability: tosca.capabilities.Compute
+          relationship: tosca.relationships.HostedOn
+    interfaces:
+      Standard:
+        operations:
+          create: maria-db-create.yaml
+          delete: maria-db-delete.yaml
+
+  media-wiki-app:
+    derived_from: tosca.nodes.SoftwareComponent
+
+    requirements:
+      - leader:
+          capability: tosca.capabilities.Compute
+          relationship: DB-credentialsTransfer
+
+      - host:
+          capability: tosca.capabilities.Compute
+          relationship: tosca.relationships.HostedOn
+
+    # capabilities:
+    #   host:
+    #     type: tosca.capabilities.Compute
+    #     occurrences: [0, UNBOUNDED]
+    #     valid_source_types: [fog.k3s.Deployment]
+    interfaces:
+      Standard:
+        inputs:
+          DB_name:
+            description: DB name
+            value: { get_attribute: [SELF, leader, DB_name] }
+            type: string
+
+          DB_username: 
+            description: username for DB
+            value: { get_attribute: [SELF, leader, DB_username] }
+            type: string
+
+          DB_passwd: 
+            description: passwd of DB
+            value: { get_attribute: [SELF, leader, DB_passwd] }
+            type: string
+
+        operations:
+          create: media-wiki-create.yaml
+          delete: media-wiki-delete.yaml
+  
+
+relationship_types:
+
+  DB-credentialsTransfer:
+    derived_from: tosca.relationships.DependsOn
+
+    attributes:
+      DB_name:
+        type: string
+
+      DB_username:
+        type: string
+      
+      DB_passwd:
+        type: string
+
+    interfaces:
+      Configure:
+        operations:
+          pre_configure_source:
+            inputs:
+
+              DB_name:
+                value: { get_attribute: [TARGET, DB_name] }
+                type: string
+
+              DB_username:
+                value: { get_attribute: [TARGET, DB_username] }
+                type: string
+
+              DB_passwd:
+                value: { get_attribute: [TARGET, DB_passwd] }
+                type: string
+
+            implementation: Configure_Token_transfer.yaml
+
+
+  
+topology_template:
+  inputs:
+    node_1:
+      type: string
+      description: Input IP address of node_1 hosting apache server & media wiki on top of it
+    node_2:
+      type: string
+      description: Input IP address of node_2 hosting mariadb which will be used by apache.
+
+  node_templates:
+      # All fog nodes
+      fog-node-1:
+        type: tosca.nodes.Compute
+        attributes:
+          private_address: { get_input: node_1 }
+          public_address: { get_input: node_1 }
+
+      fog-node-2:
+        type: tosca.nodes.Compute
+        attributes:
+          private_address: { get_input: node_2 }
+          public_address: { get_input: node_2 }
+
+      apache-server-node:
+        type: apache-server
+        requirements:
+          - host: fog-node-1
+          # - leader: k3s-control-plane
+
+      maria-db-node:
+        type: maria-db
+        requirements:
+          - host: fog-node-2
+          # - leader: k3s-control-plane
+
+      media-wiki-app:
+        type: media-wiki-app
+        requirements:
+          - host: fog-node-1
+          - dependency: apache-server-node
+          - leader: maria-db-node
+
+      
